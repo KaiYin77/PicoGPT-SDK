@@ -9,7 +9,7 @@ Dataset: TinyStories (simple English stories, no Unicode issues)
 
 # I/O
 out_dir = 'out-tf-sub-pico-tinystories-tiny-bpe'
-eval_interval = 500
+eval_interval = 600   # Adjusted for 30K iters
 log_interval = 10
 eval_iters = 200
 always_save_checkpoint = True
@@ -30,15 +30,15 @@ bias = False     # CIMv3 prefers bias-free INT8 GEMM operations
 
 # AdamW optimizer
 learning_rate = 2e-3  # Start with 2e-3, can lower to 1e-3 for more stable convergence
-max_iters = 20000     # Increased for larger TinyStories dataset (vs 12000 for Shakespeare)
+max_iters = 35000     # Increased for 2x larger dataset (200K samples vs 100K)
 weight_decay = 1e-1
 beta1 = 0.9
 beta2 = 0.99
 grad_clip = 1.0
 
 # Learning rate decay
-warmup_iters = 800      # Longer warmup for larger dataset
-lr_decay_iters = 20000  # Match max_iters
+warmup_iters = 1000     # Longer warmup for larger dataset
+lr_decay_iters = 35000  # Match max_iters
 min_lr = 2e-4
 
 # Mixed precision (TensorFlow equivalent of PyTorch AMP)

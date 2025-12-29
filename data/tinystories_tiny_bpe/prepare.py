@@ -19,9 +19,9 @@ TARGET_VOCAB_SIZE = 256  # adjust as needed for compression vs. size
 SP_MARKER = "\u2581"  # SentencePiece-style space marker
 
 # Dataset config
-MAX_TRAIN_SAMPLES = 100000  # Limit samples to avoid memory issues (None = all)
-MAX_VAL_SAMPLES = 10000     # Limit validation samples
-BPE_TRAIN_SAMPLES = 10000   # Limit BPE training to smaller subset for speed
+MAX_TRAIN_SAMPLES = 200000  # 2x larger - chunked encoding makes this fast!
+MAX_VAL_SAMPLES = 20000     # 2x larger
+BPE_TRAIN_SAMPLES = 20000   # 2x larger for better tokenizer
 
 
 def get_pair_stats(tokens):
@@ -158,23 +158,46 @@ def train_bpe(text, target_vocab_size):
     return train_bpe_optimized(text, target_vocab_size)
 
 
-def encode(text, merges, stoi):
+def encode(text, merges, stoi, show_progress=False):
+    """Encode text with BPE merges (single text)."""
     tokens = list(text.replace(" ", SP_MARKER))
+
     for pair in merges:
         merged_token = "".join(pair)
         tokens = merge_tokens(tokens, pair, merged_token)
 
     # Filter unknown tokens (special characters not in vocab)
-    encoded = []
-    for t in tokens:
-        if t in stoi:
-            encoded.append(stoi[t])
-        else:
-            # Skip unknown character (or map to a default token)
-            # Uncomment next line to see warnings:
-            # print(f"Warning: Unknown character '{t}' (U+{ord(t):04X}), skipping")
-            pass
+    encoded = [stoi[t] for t in tokens if t in stoi]
     return encoded
+
+
+def encode_chunked(texts, merges, stoi, chunk_size=1000, show_progress=True):
+    """
+    Encode multiple texts in chunks for better performance.
+    Processing smaller chunks is MUCH faster than one giant string.
+    """
+    print(f"  Encoding {len(texts):,} texts in chunks of {chunk_size:,}...")
+
+    all_ids = []
+    num_chunks = (len(texts) + chunk_size - 1) // chunk_size
+
+    for chunk_idx in range(num_chunks):
+        start_idx = chunk_idx * chunk_size
+        end_idx = min(start_idx + chunk_size, len(texts))
+        chunk_texts = texts[start_idx:end_idx]
+
+        # Combine chunk into single string
+        chunk_text = "\n".join(chunk_texts)
+
+        # Encode the chunk
+        chunk_ids = encode(chunk_text, merges, stoi, show_progress=False)
+        all_ids.extend(chunk_ids)
+
+        if show_progress:
+            progress = (chunk_idx + 1) / num_chunks * 100
+            print(f"    Chunk {chunk_idx + 1}/{num_chunks} ({progress:.1f}%) - {len(chunk_ids):,} tokens - Total: {len(all_ids):,} tokens")
+
+    return all_ids
 
 
 def decode(ids, itos):
@@ -248,10 +271,14 @@ try:
     else:
         val_dataset = dataset['validation']
 
-    # Extract text from stories
+    # Extract text from stories - keep as list for chunked encoding
     print("Extracting text from stories...")
-    train_data = "\n".join(train_dataset['text'])
-    val_data = "\n".join(val_dataset['text'])
+    train_texts = [clean_text(text) for text in train_dataset['text']]
+    val_texts = [clean_text(text) for text in val_dataset['text']]
+
+    # For BPE training, we still need concatenated text
+    train_data = "\n".join(train_texts)
+    val_data = "\n".join(val_texts)
 
 except ImportError:
     print("="*60)
@@ -272,25 +299,21 @@ except Exception as e:
         exit(1)
     with open(input_file_path, "r", encoding="utf-8") as f:
         data = f.read()
-    n = len(data)
-    train_data = data[: int(n * 0.9)]
-    val_data = data[int(n * 0.9) :]
+
+    # Split by paragraphs for chunked processing
+    all_texts = [clean_text(p.strip()) for p in data.split('\n\n') if p.strip()]
+    n = len(all_texts)
+
+    train_texts = all_texts[: int(n * 0.9)]
+    val_texts = all_texts[int(n * 0.9) :]
+
+    train_data = "\n".join(train_texts)
+    val_data = "\n".join(val_texts)
 
 print()
-print(f"Dataset statistics (before cleaning):")
-print(f"  Train: {len(train_data):,} characters")
-print(f"  Val:   {len(val_data):,} characters")
-print()
-
-# Clean text to remove special Unicode characters
-print("Cleaning text (removing non-ASCII characters)...")
-train_data = clean_text(train_data)
-val_data = clean_text(val_data)
-
-print()
-print(f"Dataset statistics (after cleaning):")
-print(f"  Train: {len(train_data):,} characters")
-print(f"  Val:   {len(val_data):,} characters")
+print(f"Dataset statistics:")
+print(f"  Train: {len(train_texts):,} stories, {len(train_data):,} characters")
+print(f"  Val:   {len(val_texts):,} stories, {len(val_data):,} characters")
 print()
 
 # Use smaller sample for BPE training (faster) but encode full dataset
@@ -325,14 +348,30 @@ print(f"  Vocabulary size: {len(vocab):,}")
 print(f"  Number of merges: {len(merges):,}")
 print()
 
-# Encode train/val
-print("Encoding train/val splits...")
-train_ids = encode(train_data, merges, stoi)
-val_ids = encode(val_data, merges, stoi)
+# Encode train/val using CHUNKED encoding (much faster!)
+print("="*60)
+print("Encoding train/val splits with CHUNKED processing...")
+print("="*60)
 
+print("\nEncoding training data...")
+start_time = time.time()
+train_ids = encode_chunked(train_texts, merges, stoi, chunk_size=1000)
+train_time = time.time() - start_time
+print(f"  ✓ Train encoding done in {train_time:.1f}s ({len(train_ids):,} tokens)")
+
+print("\nEncoding validation data...")
+start_time = time.time()
+val_ids = encode_chunked(val_texts, merges, stoi, chunk_size=1000)
+val_time = time.time() - start_time
+print(f"  ✓ Val encoding done in {val_time:.1f}s ({len(val_ids):,} tokens)")
+
+print()
+print("="*60)
 print(f"✓ Encoding complete!")
 print(f"  Train: {len(train_ids):,} tokens")
 print(f"  Val:   {len(val_ids):,} tokens")
+print(f"  Total time: {train_time + val_time:.1f}s")
+print("="*60)
 print()
 
 # Export to bin files

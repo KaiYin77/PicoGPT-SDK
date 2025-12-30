@@ -95,7 +95,7 @@ class CharacterTokenizer:
     def _encode_bpe(self, text):
         if not self.merges or not self.stoi:
             raise ValueError("BPE tokenizer missing merges or stoi")
-        if self.bpe_type == 'tiny_sp' and self.sp_marker:
+        if self.bpe_type and 'tiny_sp' in self.bpe_type and self.sp_marker:
             text = text.replace(' ', self.sp_marker)
         tokens = list(text)
         for pair in self.merges:
@@ -107,7 +107,7 @@ class CharacterTokenizer:
         if not self.itos:
             raise ValueError("BPE tokenizer missing itos")
         text = ''.join(self.itos[i] for i in tokens)
-        if self.bpe_type == 'tiny_sp' and self.sp_marker:
+        if self.bpe_type and 'tiny_sp' in self.bpe_type and self.sp_marker:
             text = text.replace(self.sp_marker, ' ')
         return text
 

@@ -104,10 +104,10 @@ def main():
             )
             print("Make sure --out_dir and --data_dir come from the same dataset.")
             return
-        if model.config.n_layer != 1:
-            print(
-                f"Warning: expected n_layer=1 for sub-pico tinystories, got {model.config.n_layer}."
-            )
+
+        # Display model configuration
+        print(f"Model: {model.config.n_layer} layers, {model.config.n_head} heads, "
+              f"{model.config.n_embd} embd, {model.get_num_params():,} params")
 
     # Build the model by running a dummy forward pass
     print("Building model...")

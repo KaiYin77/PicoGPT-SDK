@@ -71,10 +71,9 @@ def main():
     config_path = os.path.join(os.path.dirname(args.tflite_path), "model_config.pkl")
     with open(config_path, "rb") as f:
         config = pickle.load(f)
-    if config.n_layer != 1:
-        print(
-            f"Warning: expected n_layer=1 for sub-pico tinystories, got {config.n_layer}."
-        )
+
+    # Display model configuration
+    print(f"Model config: {config.n_layer} layers, {config.n_head} heads, {config.n_embd} embd")
 
     # Encode prompt
     prompt_tokens = tokenizer.encode(args.start)
